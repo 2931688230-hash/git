@@ -1,0 +1,6 @@
+build/
+managed_components/
+_tmp_ESP32-Project/
+.pytest_cache/
+*.log
+*.tmp

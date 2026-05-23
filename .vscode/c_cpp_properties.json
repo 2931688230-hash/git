@@ -1,0 +1,47 @@
+{
+    "configurations": [
+        {
+            "name": "ESP-IDF",
+            "compilerPath": "${config:idf.toolsPathWin}\\tools\\riscv32-esp-elf\\esp-14.2.0_20260121\\riscv32-esp-elf\\bin\\riscv32-esp-elf-gcc.exe",
+            "forcedInclude": [
+                "${workspaceFolder}/.vscode/esp-idf-intellisense.h"
+            ],
+            "includePath": [
+                "${config:idf.espIdfPathWin}/components/**",
+                "D:/ESP/Espressif/frameworks/esp-idf-v5.5.4/components/**",
+                "${env:IDF_PATH}/components/**",
+                "${env:IDF_PATH}\\components\\**",
+                "${workspaceFolder}/**",
+                "D:/ESP/Espressif/frameworks/esp-idf-v5.5.4/components/esp_driver_gpio/include"
+            ],
+            "browse": {
+                "path": [
+                    "${config:idf.espIdfPathWin}/components",
+                    "D:/ESP/Espressif/frameworks/esp-idf-v5.5.4/components",
+                    "${env:IDF_PATH}/components",
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        },
+        {
+            "name": "C/C++",
+            "forcedInclude": [
+                "${workspaceFolder}/.vscode/esp-idf-intellisense.h"
+            ],
+            "includePath": [
+                "${config:idf.espIdfPathWin}/components/**",
+                "D:/ESP/Espressif/frameworks/esp-idf-v5.5.4/components/**",
+                "${env:IDF_PATH}/components/**",
+                "${env:IDF_PATH}\\components\\**",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ]
+        }
+    ],
+    "version": 4
+}
