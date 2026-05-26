@@ -1,27 +1,29 @@
 set(src_dirs
-            SPI
             IIS
-            tts
             wifi
-            http_client
             )
+
 set(include_dirs
-            SPI
             IIS
-            tts
-            wifi
-            http_client)
-set(requires
-            driver
+            wifi)
+
+# Public dependencies exposed by BSP headers.
+set(public_requires
+            esp_common
+            driver)
+
+# Private dependencies used only by BSP implementation files.
+set(private_requires
             log
             freertos
             esp_wifi
             esp_event
             esp_netif
-            nvs_flash
-            esp_http_client
-            esp-tls
-            mbedtls
-            json)
-idf_component_register(SRC_DIRS ${src_dirs} INCLUDE_DIRS ${include_dirs} REQUIRES ${requires})
+            nvs_flash)
+
+idf_component_register(SRC_DIRS ${src_dirs}
+                       INCLUDE_DIRS ${include_dirs}
+                       REQUIRES ${public_requires}
+                       PRIV_REQUIRES ${private_requires})
+
 component_compile_options(-ffast-math -O3 -Wno-format)

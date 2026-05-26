@@ -1,53 +1,83 @@
-| Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C5 | ESP32-C6 | ESP32-C61 | ESP32-H2 | ESP32-H21 | ESP32-H4 | ESP32-P4 | ESP32-S2 | ESP32-S3 | Linux |
-| ----------------- | ----- | -------- | -------- | -------- | -------- | --------- | -------- | --------- | -------- | -------- | -------- | -------- | ----- |
+# ESP32-C5 Doubao TTS Streaming Demo
 
-# Hello World Example
+这是一个基于 ESP-IDF 的 ESP32-C5 示例工程，当前只保留本次语音链路相关代码：
 
-Starts a FreeRTOS task to print "Hello World".
+- WiFi 自动扫描并连接已知热点
+- I2S Speaker PCM16 单声道播放
+- Doubao-TTS 2.0 HTTPS POST 流式请求
+- MP3 chunk/SSE/JSON 流解析
+- minimp3 解码
+- ringbuffer + FreeRTOS task 边下载边播放
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+## 需要本地填写的配置
 
-## How to use example
+### WiFi
 
-Follow detailed instructions provided specifically for this example.
+编辑：
 
-Select the instructions depending on Espressif chip installed on your development board:
-
-- [ESP32 Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/stable/get-started/index.html)
-- [ESP32-S2 Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s2/get-started/index.html)
-
-
-## Example folder contents
-
-The project **hello_world** contains one source file in C language [hello_world_main.c](main/hello_world_main.c). The file is located in folder [main](main).
-
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt` files that provide set of directives and instructions describing the project's source files and targets (executable, library, or both).
-
-Below is short explanation of remaining files in the project folder.
-
-```
-├── CMakeLists.txt
-├── pytest_hello_world.py      Python script used for automated testing
-├── main
-│   ├── CMakeLists.txt
-│   └── hello_world_main.c
-└── README.md                  This is the file you are currently reading
+```text
+components/BSP/wifi/wifi_credentials.h
 ```
 
-For more information on structure and contents of ESP-IDF projects, please refer to Section [Build System](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/build-system.html) of the ESP-IDF Programming Guide.
+把模板替换成你自己的 WiFi：
 
-## Troubleshooting
+```c
+static const known_wifi_t WIFI_KNOWN_LIST[] = {
+    {"YOUR_WIFI_SSID", "YOUR_WIFI_PASSWORD"},
+};
+```
 
-* Program upload failure
+### Doubao-TTS API Key
 
-    * Hardware connection is not correct: run `idf.py -p PORT monitor`, and reboot your board to see if there are any output logs.
-    * The baud rate for downloading is too high: lower your baud rate in the `menuconfig` menu, and try again.
+编辑：
 
-## Technical support and feedback
+```text
+components/doubao_tts/doubao_tts.h
+```
 
-Please use the following feedback channels:
+填写：
 
-* For technical queries, go to the [esp32.com](https://esp32.com/) forum
-* For a feature request or bug report, create a [GitHub issue](https://github.com/espressif/esp-idf/issues)
+```c
+#define DOUBAO_TTS_API_KEY "YOUR_X_API_KEY"
+```
 
-We will get back to you as soon as possible.
+默认资源 ID 已设置为：
+
+```c
+#define DOUBAO_TTS_RESOURCE_ID "seed-tts-2.0"
+```
+
+默认音色：
+
+```c
+#define DOUBAO_TTS_VOICE_TYPE "zh_female_vv_uranus_bigtts"
+```
+
+### 测试文本
+
+编辑：
+
+```text
+main/main_config.h
+```
+
+修改：
+
+```c
+#define MAIN_TTS_TEST_TEXT "你好，ESP32-C5"
+```
+
+## 目录说明
+
+```text
+components/BSP/IIS/          I2S Speaker 播放
+components/BSP/wifi/         WiFi 管理和账号模板
+components/doubao_tts/       Doubao-TTS 2.0 + MP3 解码流式播放
+main/                        app_main 和测试入口
+```
+
+## 安全说明
+
+仓库中不保存真实 WiFi 密码和真实 Doubao API Key。
+
+上传 GitHub 前请保持这些值为空或模板值。

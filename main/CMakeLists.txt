@@ -1,7 +1,4 @@
 idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES BSP Middldewares
-                       driver
-                       freertos
-                       log
-                       json)
+                       REQUIRES BSP doubao_tts
+                       PRIV_REQUIRES freertos log)
