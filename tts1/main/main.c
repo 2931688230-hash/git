@@ -30,6 +30,10 @@ static void main_tts_pcm_output(const int16_t *samples,
 {
     (void)user_ctx;
 
+    if (samples == NULL || sample_count == 0) {
+        return;
+    }
+
     if (sample_rate_hz != BSP_I2S_SAMPLE_RATE_HZ) {
         ESP_LOGW(TAG,
                  "TTS sample rate is %d Hz, but I2S is configured as %d Hz",
@@ -41,31 +45,33 @@ static void main_tts_pcm_output(const int16_t *samples,
 }
 
 /**
- * @brief 播放一段 Doubao-TTS 冒烟测试语音。
+ * @brief 执行一次 Doubao-TTS 语音输出小测试。
  *
  * 调用方法：
  * 1. app_main() 已经完成 Wi-Fi 初始化；
  * 2. wifi_connect_to_ap() 已经返回 ESP_OK，确认设备能访问网络；
  * 3. doubao_tts_init() 已经注册 PCM 输出回调；
- * 4. 调用本函数后会阻塞等待 doubao_tts_play_text() 播放完成。
+ * 4. 调用本函数后会阻塞等待 doubao_tts_play_text() 播放完成；
+ * 5. 默认播放文本在 main_config.h 的 MAIN_TTS_TEST_TEXT 中配置。
  *
  * 说明：
- * - 测试文本由 MAIN_TTS_TEST_TEXT 配置；
+ * - 本测试只播放一次，不循环重复播放；
  * - 播放前等待时间由 MAIN_TTS_TEST_DELAY_MS 配置；
- * - 本函数只用于验证语音链路，后续正式业务可以替换成按键、串口命令或状态机触发。
+ * - 如果想把“你好，ESP32-C5”改成别的话，只改 main_config.h，不需要改 main.c。
  */
-static void run_tts_smoke_test(void)
+static void main_run_tts_test_once(void)
 {
     vTaskDelay(pdMS_TO_TICKS(MAIN_TTS_TEST_DELAY_MS));
 
-    ESP_LOGI(TAG, "Doubao TTS playback start");
+    ESP_LOGI(TAG, "Doubao TTS test start, text: %s", MAIN_TTS_TEST_TEXT);
+
     esp_err_t err = doubao_tts_play_text(MAIN_TTS_TEST_TEXT);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Doubao TTS playback failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Doubao TTS test failed: %s", esp_err_to_name(err));
         return;
     }
 
-    ESP_LOGI(TAG, "Doubao TTS playback end");
+    ESP_LOGI(TAG, "Doubao TTS test finished");
 }
 
 /**
@@ -78,8 +84,8 @@ static void run_tts_smoke_test(void)
  * 1. 初始化 Wi-Fi 管理模块；
  * 2. 连接 wifi_credentials.h 中配置的目标 Wi-Fi；
  * 3. 注册 Doubao-TTS 的 PCM 输出回调；
- * 4. 连接成功后播放一段 TTS 测试语音；
- * 5. 进入低频空闲循环，保持系统运行。
+ * 4. 播放一次 MAIN_TTS_TEST_TEXT，用来验证“HTTPS -> MP3 -> PCM -> I2S”链路；
+ * 5. 进入低频空闲循环，保持系统运行，方便串口继续看日志。
  */
 void app_main(void)
 {
@@ -105,7 +111,7 @@ void app_main(void)
 
     esp_err_t tts_err = doubao_tts_init(main_tts_pcm_output, NULL);
     if (tts_err == ESP_OK) {
-        run_tts_smoke_test();
+        main_run_tts_test_once();
     } else {
         ESP_LOGE(TAG, "Doubao TTS init failed: %s", esp_err_to_name(tts_err));
     }
