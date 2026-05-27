@@ -1,17 +1,23 @@
-set(src_dirs
-            SPI
-            IIS
-            tts
-            wifi
-            http_client
-            )
+set(srcs
+            SPI/spi.c
+            IIS/i2s.c
+            wifi/wifi_manager.c
+            http_client/http_client.c
+            doubao_tts/doubao_tts.c
+            doubao_tts/mp3_decoder.c)
+
 set(include_dirs
             SPI
             IIS
-            tts
             wifi
-            http_client)
+            http_client
+            doubao_tts)
+
+set(private_include_dirs
+            doubao_tts/third_party)
+
 set(requires
+            esp_common
             driver
             log
             freertos
@@ -22,6 +28,11 @@ set(requires
             esp_http_client
             esp-tls
             mbedtls
-            json)
-idf_component_register(SRC_DIRS ${src_dirs} INCLUDE_DIRS ${include_dirs} REQUIRES ${requires})
+            json
+            esp_ringbuf)
+
+idf_component_register(SRCS ${srcs}
+                       INCLUDE_DIRS ${include_dirs}
+                       PRIV_INCLUDE_DIRS ${private_include_dirs}
+                       REQUIRES ${requires})
 component_compile_options(-ffast-math -O3 -Wno-format)

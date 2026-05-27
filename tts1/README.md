@@ -32,7 +32,7 @@ static const known_wifi_t WIFI_KNOWN_LIST[] = {
 编辑：
 
 ```text
-components/doubao_tts/doubao_tts.h
+components/BSP/doubao_tts/doubao_tts.h
 ```
 
 填写：
@@ -72,7 +72,7 @@ main/main_config.h
 ```text
 components/BSP/IIS/          I2S Speaker 播放
 components/BSP/wifi/         WiFi 管理和账号模板
-components/doubao_tts/       Doubao-TTS 2.0 + MP3 解码流式播放
+components/BSP/doubao_tts/   Doubao-TTS 2.0 + MP3 解码流式播放
 main/                        app_main 和测试入口
 ```
 

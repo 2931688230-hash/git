@@ -1,4 +1,4 @@
 idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES BSP doubao_tts
+                       REQUIRES BSP
                        PRIV_REQUIRES freertos log)
