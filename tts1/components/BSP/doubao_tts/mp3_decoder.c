@@ -46,6 +46,13 @@ static esp_err_t output_pcm_mono(mp3_decoder_t *decoder,
                 chunk_samples = MP3_DECODER_PCM_CHUNK_SAMPLES;
             }
 
+            ESP_LOGI(TAG,
+                     "audio_chain pcm_chunk: stage=mp3_decoder_output, channels=%d, sample_rate=%d, samples=%zu, bytes=%zu",
+                     channels,
+                     sample_rate_hz,
+                     chunk_samples,
+                     chunk_samples * sizeof(pcm[0]));
+
             esp_err_t err = decoder->pcm_cb(pcm + offset,
                                             chunk_samples,
                                             sample_rate_hz,
@@ -73,6 +80,13 @@ static esp_err_t output_pcm_mono(mp3_decoder_t *decoder,
                 int32_t right = pcm[(offset + i) * 2 + 1];
                 mono[i] = (int16_t)((left + right) / 2);
             }
+
+            ESP_LOGI(TAG,
+                     "audio_chain pcm_chunk: stage=mp3_decoder_output, channels=%d, sample_rate=%d, samples=%zu, bytes=%zu",
+                     channels,
+                     sample_rate_hz,
+                     chunk_samples,
+                     chunk_samples * sizeof(mono[0]));
 
             esp_err_t err = decoder->pcm_cb(mono,
                                             chunk_samples,
@@ -115,6 +129,10 @@ static esp_err_t decode_available_frames(mp3_decoder_t *decoder)
 
         if (samples <= 0) {
             if (info.frame_bytes > 0 && (size_t)info.frame_bytes <= decoder->input_len) {
+                ESP_LOGW(TAG,
+                         "audio_chain buffer reset/drop: stage=mp3_decoder, dropped_bytes=%d, input_len_before=%zu",
+                         info.frame_bytes,
+                         decoder->input_len);
                 memmove(decoder->input_buf,
                         decoder->input_buf + info.frame_bytes,
                         decoder->input_len - (size_t)info.frame_bytes);
@@ -122,10 +140,19 @@ static esp_err_t decode_available_frames(mp3_decoder_t *decoder)
                 continue;
             }
 
+            ESP_LOGW(TAG,
+                     "audio_chain buffer underflow: stage=mp3_decoder_wait_frame, input_len=%zu, frame_bytes=%d",
+                     decoder->input_len,
+                     info.frame_bytes);
             break;
         }
 
         if (info.frame_bytes <= 0 || (size_t)info.frame_bytes > decoder->input_len) {
+            ESP_LOGW(TAG,
+                     "audio_chain buffer underflow: stage=mp3_decoder_incomplete_frame, input_len=%zu, frame_bytes=%d, samples=%d",
+                     decoder->input_len,
+                     info.frame_bytes,
+                     samples);
             break;
         }
 
@@ -138,6 +165,13 @@ static esp_err_t decode_available_frames(mp3_decoder_t *decoder)
         }
 
         decoder->sample_rate_hz = info.hz;
+        ESP_LOGI(TAG,
+                 "audio_chain chunk: stage=mp3_frame_decode, frame_bytes=%d, samples_per_channel=%d, channels=%d, sample_rate=%d",
+                 info.frame_bytes,
+                 samples,
+                 info.channels,
+                 info.hz);
+
         esp_err_t err = output_pcm_mono(decoder,
                                         pcm,
                                         (size_t)samples,
@@ -186,6 +220,12 @@ esp_err_t mp3_decoder_decode(mp3_decoder_t *decoder, const uint8_t *data, size_t
         return ESP_ERR_INVALID_ARG;
     }
 
+    if (len == 0) {
+        ESP_LOGW(TAG,
+                 "audio_chain empty buffer: stage=mp3_decoder_decode, input_bytes=0, buffered_bytes=%zu",
+                 decoder->input_len);
+    }
+
     size_t offset = 0;
     while (offset < len) {
         size_t free_len = sizeof(decoder->input_buf) - decoder->input_len;
@@ -197,7 +237,10 @@ esp_err_t mp3_decoder_decode(mp3_decoder_t *decoder, const uint8_t *data, size_t
 
             free_len = sizeof(decoder->input_buf) - decoder->input_len;
             if (free_len == 0) {
-                ESP_LOGE(TAG, "MP3 decode buffer is full, input stream may be invalid");
+                ESP_LOGE(TAG,
+                         "audio_chain buffer overflow: stage=mp3_decoder_input, buffered_bytes=%zu, input_bytes=%zu",
+                         decoder->input_len,
+                         len);
                 return ESP_ERR_NO_MEM;
             }
         }
@@ -210,6 +253,12 @@ esp_err_t mp3_decoder_decode(mp3_decoder_t *decoder, const uint8_t *data, size_t
         memcpy(decoder->input_buf + decoder->input_len, data + offset, copy_len);
         decoder->input_len += copy_len;
         offset += copy_len;
+        ESP_LOGI(TAG,
+                 "audio_chain chunk: stage=mp3_decoder_input, copy_bytes=%zu, buffered_bytes=%zu, input_offset=%zu/%zu",
+                 copy_len,
+                 decoder->input_len,
+                 offset,
+                 len);
 
         esp_err_t err = decode_available_frames(decoder);
         if (err != ESP_OK) {
@@ -232,7 +281,7 @@ esp_err_t mp3_decoder_flush(mp3_decoder_t *decoder)
     }
 
     if (decoder->input_len > 0) {
-        ESP_LOGW(TAG, "Drop %u trailing MP3 bytes",
+        ESP_LOGW(TAG, "audio_chain buffer reset/drop: stage=mp3_decoder_flush, trailing_bytes=%u",
                  (unsigned int)decoder->input_len);
         decoder->input_len = 0;
     }

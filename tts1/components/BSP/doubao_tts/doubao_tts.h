@@ -23,7 +23,7 @@
 
 /* Doubao-TTS 2.0 API Key；本地测试时填真实值，提交仓库前建议保持为空字符串。 */
 #ifndef DOUBAO_TTS_API_KEY
-#define DOUBAO_TTS_API_KEY ""
+#define DOUBAO_TTS_API_KEY "ark-ec498c56-96bd-44c2-b022-4630fd2c563c-a5395"
 #endif
 
 /* Doubao-TTS 2.0 资源 ID；新版鉴权要求请求头 X-Api-Resource-Id 使用 seed-tts-2.0。 */

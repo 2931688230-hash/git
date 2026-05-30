@@ -19,6 +19,7 @@ set(public_requires
 
 # Private dependencies used only by BSP implementation files.
 set(private_requires
+            audio_player
             log
             freertos
             esp_wifi
@@ -27,6 +28,7 @@ set(private_requires
             nvs_flash
             esp_http_client
             esp-tls
+            esp_timer
             mbedtls
             json
             esp_ringbuf)
@@ -37,4 +39,4 @@ idf_component_register(SRCS ${srcs}
                        REQUIRES ${public_requires}
                        PRIV_REQUIRES ${private_requires})
 
-component_compile_options(-ffast-math -O3 -Wno-format)
+component_compile_options(-ffast-math -O3 -Wno-format -Wno-error=stringop-overflow)

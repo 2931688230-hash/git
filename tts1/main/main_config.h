@@ -20,7 +20,15 @@
 
 /* app_main 末尾空闲循环的延时，单位 ms；避免主任务空转占满 CPU。 */
 #ifndef MAIN_IDLE_DELAY_MS
-#define MAIN_IDLE_DELAY_MS 1000
+#define MAIN_IDLE_DELAY_MS 1
+#endif
+
+#ifndef MAIN_AUDIO_TASK_STACK_SIZE
+#define MAIN_AUDIO_TASK_STACK_SIZE 4096
+#endif
+
+#ifndef MAIN_AUDIO_TASK_PRIORITY
+#define MAIN_AUDIO_TASK_PRIORITY 5
 #endif
 
 #endif // MAIN_CONFIG_H

@@ -909,6 +909,12 @@ CONFIG_PM_WORKAROUND_FREQ_LIMIT_ENABLED=y
 # end of Power Management
 
 #
+# ESP Ringbuf
+#
+# CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH is not set
+# end of ESP Ringbuf
+
+#
 # ESP-ROM
 #
 CONFIG_ESP_ROM_PRINT_IN_IRAM=y

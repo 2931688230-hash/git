@@ -12,6 +12,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/ringbuf.h"
 #include "freertos/semphr.h"
@@ -36,7 +37,26 @@ typedef struct {
     volatile bool abort_requested;
     esp_err_t http_result;
     esp_err_t decoder_result;
+    size_t http_bytes_read;
+    uint32_t http_read_chunks;
+    uint32_t http_empty_reads;
     size_t mp3_bytes_sent;
+    uint32_t mp3_send_chunks;
+    uint32_t mp3_send_timeouts;
+    uint32_t mp3_recv_chunks;
+    uint32_t mp3_recv_timeouts;
+    uint32_t mp3_empty_buffers;
+    uint32_t base64_chunks;
+    size_t base64_input_bytes;
+    size_t base64_output_bytes;
+    uint32_t pcm_chunks;
+    uint32_t pcm_empty_chunks;
+    size_t pcm_samples;
+    int64_t last_pcm_output_us;
+    int64_t max_pcm_output_gap_us;
+    int64_t total_pcm_output_gap_us;
+    uint32_t pcm_output_gap_count;
+    int64_t max_write_audio_us;
 } doubao_tts_job_t;
 
 typedef struct {
@@ -76,6 +96,41 @@ static bool is_empty_string(const char *str)
 static TickType_t ms_to_ticks(uint32_t timeout_ms)
 {
     return pdMS_TO_TICKS(timeout_ms);
+}
+
+static void log_tts_stream_summary(const doubao_tts_job_t *job, esp_err_t result)
+{
+    if (job == NULL) {
+        return;
+    }
+
+    const int64_t avg_gap_us = job->pcm_output_gap_count == 0 ? 0 :
+                               job->total_pcm_output_gap_us / job->pcm_output_gap_count;
+    ESP_LOGI(TAG,
+             "audio_chain summary: result=%s, http_bytes=%zu, http_chunks=%u, http_empty_reads=%u, "
+             "base64_chunks=%u, base64_input_bytes=%zu, base64_output_bytes=%zu, "
+             "mp3_sent_bytes=%zu, mp3_send_chunks=%u, mp3_recv_chunks=%u, "
+             "pcm_chunks=%u, pcm_samples=%zu, pcm_empty_chunks=%u, recv_timeouts=%u, send_timeouts=%u, "
+             "empty_buffers=%u, max_write_audio_us=%lld, avg_write_interval_us=%lld, max_write_interval_us=%lld",
+             esp_err_to_name(result),
+             job->http_bytes_read,
+             (unsigned int)job->http_read_chunks,
+             (unsigned int)job->http_empty_reads,
+             (unsigned int)job->base64_chunks,
+             job->base64_input_bytes,
+             job->base64_output_bytes,
+             job->mp3_bytes_sent,
+             (unsigned int)job->mp3_send_chunks,
+             (unsigned int)job->mp3_recv_chunks,
+             (unsigned int)job->pcm_chunks,
+             job->pcm_samples,
+             (unsigned int)job->pcm_empty_chunks,
+             (unsigned int)job->mp3_recv_timeouts,
+             (unsigned int)job->mp3_send_timeouts,
+             (unsigned int)job->mp3_empty_buffers,
+             (long long)job->max_write_audio_us,
+             (long long)avg_gap_us,
+             (long long)job->max_pcm_output_gap_us);
 }
 
 /**
@@ -245,6 +300,12 @@ static esp_err_t send_mp3_bytes_to_ringbuffer(doubao_tts_job_t *job,
     if (job == NULL || job->mp3_ringbuf == NULL || (data == NULL && len > 0)) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (len == 0) {
+        job->mp3_empty_buffers++;
+        ESP_LOGW(TAG,
+                 "audio_chain empty buffer: stage=mp3_ringbuf_send, empty_buffers=%u",
+                 (unsigned int)job->mp3_empty_buffers);
+    }
 
     size_t offset = 0;
     while (offset < len) {
@@ -262,12 +323,23 @@ static esp_err_t send_mp3_bytes_to_ringbuffer(doubao_tts_job_t *job,
                                           chunk_len,
                                           ms_to_ticks(DOUBAO_TTS_RINGBUF_SEND_TIMEOUT_MS));
         if (sent != pdTRUE) {
-            ESP_LOGE(TAG, "MP3 ringbuffer send timeout");
+            job->mp3_send_timeouts++;
+            ESP_LOGE(TAG,
+                     "audio_chain buffer overflow/timeout: stage=mp3_ringbuf_send, request_bytes=%zu, sent_chunks=%u, send_timeouts=%u",
+                     chunk_len,
+                     (unsigned int)job->mp3_send_chunks,
+                     (unsigned int)job->mp3_send_timeouts);
             job->abort_requested = true;
             return ESP_ERR_TIMEOUT;
         }
 
         job->mp3_bytes_sent += chunk_len;
+        job->mp3_send_chunks++;
+        ESP_LOGI(TAG,
+                 "audio_chain chunk: stage=mp3_ringbuf_send, chunk_id=%u, chunk_bytes=%zu, total_mp3_bytes=%zu",
+                 (unsigned int)job->mp3_send_chunks,
+                 chunk_len,
+                 job->mp3_bytes_sent);
         offset += chunk_len;
     }
 
@@ -303,6 +375,10 @@ static esp_err_t decode_base64_audio_to_ringbuffer(doubao_tts_job_t *job,
     size_t offset = 0;
     size_t max_input_len = (DOUBAO_TTS_BASE64_DECODE_BUF_SIZE / 3U) * 4U;
 
+    ESP_LOGI(TAG,
+             "audio_chain chunk: stage=base64_audio_input, base64_bytes=%zu",
+             base64_len);
+
     if (max_input_len < 4) {
         free(decode_buf);
         return ESP_ERR_INVALID_SIZE;
@@ -330,6 +406,16 @@ static esp_err_t decode_base64_audio_to_ringbuffer(doubao_tts_job_t *job,
             ret = ESP_FAIL;
             break;
         }
+
+        job->base64_chunks++;
+        job->base64_input_bytes += input_len;
+        job->base64_output_bytes += output_len;
+        ESP_LOGI(TAG,
+                 "audio_chain chunk: stage=base64_decode, chunk_id=%u, input_bytes=%zu, output_mp3_bytes=%zu, total_output_mp3_bytes=%zu",
+                 (unsigned int)job->base64_chunks,
+                 input_len,
+                 output_len,
+                 job->base64_output_bytes);
 
         ret = send_mp3_bytes_to_ringbuffer(job, decode_buf, output_len);
         if (ret != ESP_OK) {
@@ -992,8 +1078,22 @@ static esp_err_t doubao_tts_http_request(doubao_tts_job_t *job)
             break;
         }
         if (read_len == 0) {
+            job->http_empty_reads++;
+            ESP_LOGI(TAG,
+                     "audio_chain empty buffer: stage=http_read, empty_reads=%u, abort=%d, remote_done=%d",
+                     (unsigned int)job->http_empty_reads,
+                     job->abort_requested ? 1 : 0,
+                     parser.remote_done ? 1 : 0);
             break;
         }
+
+        job->http_read_chunks++;
+        job->http_bytes_read += (size_t)read_len;
+        ESP_LOGI(TAG,
+                 "audio_chain chunk: stage=http_read, chunk_id=%u, chunk_bytes=%d, total_http_bytes=%zu",
+                 (unsigned int)job->http_read_chunks,
+                 read_len,
+                 job->http_bytes_read);
 
         ret = stream_parser_feed(&parser, read_buf, (size_t)read_len);
         if (ret != ESP_OK) {
@@ -1058,13 +1158,59 @@ static esp_err_t decoder_pcm_output_cb(const int16_t *samples,
                                        int sample_rate_hz,
                                        void *user_ctx)
 {
-    (void)user_ctx;
+    doubao_tts_job_t *job = (doubao_tts_job_t *)user_ctx;
 
     if (s_pcm_output == NULL) {
         return ESP_ERR_INVALID_STATE;
     }
 
+    if (sample_count == 0 || samples == NULL) {
+        if (job != NULL) {
+            job->pcm_empty_chunks++;
+        }
+        ESP_LOGW(TAG,
+                 "audio_chain empty buffer: stage=pcm_callback, samples=%zu, sample_rate=%d, empty_pcm_chunks=%u",
+                 sample_count,
+                 sample_rate_hz,
+                 job != NULL ? (unsigned int)job->pcm_empty_chunks : 0U);
+    }
+
+    const int64_t now_us = esp_timer_get_time();
+    int64_t interval_us = 0;
+    if (job != NULL && job->last_pcm_output_us != 0) {
+        interval_us = now_us - job->last_pcm_output_us;
+        job->total_pcm_output_gap_us += interval_us;
+        job->pcm_output_gap_count++;
+        if (interval_us > job->max_pcm_output_gap_us) {
+            job->max_pcm_output_gap_us = interval_us;
+        }
+    }
+    if (job != NULL) {
+        job->last_pcm_output_us = now_us;
+        job->pcm_chunks++;
+        job->pcm_samples += sample_count;
+    }
+
+    ESP_LOGI(TAG,
+             "audio_chain pcm_chunk: stage=tts_pcm_callback, chunk_id=%u, samples=%zu, bytes=%zu, sample_rate=%d, write_interval_us=%lld",
+             job != NULL ? (unsigned int)job->pcm_chunks : 0U,
+             sample_count,
+             sample_count * sizeof(samples[0]),
+             sample_rate_hz,
+             (long long)interval_us);
+
+    const int64_t write_start_us = esp_timer_get_time();
     s_pcm_output(samples, sample_count, sample_rate_hz, s_pcm_output_ctx);
+    const int64_t write_audio_us = esp_timer_get_time() - write_start_us;
+    if (job != NULL && write_audio_us > job->max_write_audio_us) {
+        job->max_write_audio_us = write_audio_us;
+    }
+    ESP_LOGI(TAG,
+             "audio_chain write_audio: chunk_id=%u, samples=%zu, bytes=%zu, elapsed_us=%lld",
+             job != NULL ? (unsigned int)job->pcm_chunks : 0U,
+             sample_count,
+             sample_count * sizeof(samples[0]),
+             (long long)write_audio_us);
     return ESP_OK;
 }
 
@@ -1085,7 +1231,7 @@ static void doubao_tts_decoder_task(void *arg)
         goto done;
     }
 
-    mp3_decoder_t *decoder = mp3_decoder_create(decoder_pcm_output_cb, NULL);
+    mp3_decoder_t *decoder = mp3_decoder_create(decoder_pcm_output_cb, job);
     if (decoder == NULL) {
         ret = ESP_ERR_NO_MEM;
         goto done;
@@ -1098,6 +1244,18 @@ static void doubao_tts_decoder_task(void *arg)
                                                           ms_to_ticks(DOUBAO_TTS_RINGBUF_RECV_TIMEOUT_MS),
                                                           DOUBAO_TTS_RINGBUF_RECV_MAX_SIZE);
         if (item != NULL) {
+            job->mp3_recv_chunks++;
+            if (item_size == 0) {
+                job->mp3_empty_buffers++;
+                ESP_LOGW(TAG,
+                         "audio_chain empty buffer: stage=mp3_ringbuf_recv, recv_chunks=%u, empty_buffers=%u",
+                         (unsigned int)job->mp3_recv_chunks,
+                         (unsigned int)job->mp3_empty_buffers);
+            }
+            ESP_LOGI(TAG,
+                     "audio_chain chunk: stage=mp3_ringbuf_recv, chunk_id=%u, chunk_bytes=%zu",
+                     (unsigned int)job->mp3_recv_chunks,
+                     item_size);
             ret = mp3_decoder_decode(decoder, item, item_size);
             vRingbufferReturnItem(job->mp3_ringbuf, item);
             if (ret != ESP_OK) {
@@ -1111,6 +1269,13 @@ static void doubao_tts_decoder_task(void *arg)
         if (job->download_done || job->abort_requested) {
             break;
         }
+
+        job->mp3_recv_timeouts++;
+        ESP_LOGW(TAG,
+                 "audio_chain buffer underflow: stage=mp3_ringbuf_recv, recv_timeouts=%u, download_done=%d, abort=%d",
+                 (unsigned int)job->mp3_recv_timeouts,
+                 job->download_done ? 1 : 0,
+                 job->abort_requested ? 1 : 0);
     }
 
     if (ret == ESP_OK) {
@@ -1300,6 +1465,8 @@ cleanup:
         job.download_done = true;
         xSemaphoreTake(job.decoder_done, portMAX_DELAY);
     }
+
+    log_tts_stream_summary(&job, ret);
 
     if (job.mp3_ringbuf != NULL) {
         vRingbufferDelete(job.mp3_ringbuf);
