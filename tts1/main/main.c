@@ -2,8 +2,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "audio_task.h"
-#include "main_config.h"
+#include "app_main_config.h"
+#include "speaker_task.h"
 
 static const char *TAG = "main";
 

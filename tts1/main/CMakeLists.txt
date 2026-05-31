@@ -1,4 +1,4 @@
-idf_component_register(SRCS "audio_task.c" "pcm_data.c" "main.c"
+idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS "."
-                       REQUIRES audio_player
+                       REQUIRES app_config speaker
                        PRIV_REQUIRES freertos log)
